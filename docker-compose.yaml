@@ -1,17 +1,40 @@
-# 本地演示：docker compose up --build 后访问 http://localhost:8080/docs
-# （真实集群里由 API server 按 CRD 的 conversion.webhook 配置回调 /convert。）
+# 本地演示：docker compose up --build
+#   webhook   http://localhost:8080/docs  —— 转换 webhook + 盘点 API
+#   mockkube  http://localhost:8081/docs  —— 本地 Kubernetes 模拟端（分页/并发场景）
 name: backup-policy-conversion
 
 services:
   webhook:
     build: .
     image: backup-policy-converter:local
+    environment:
+      # 盘点 API 从这里读 BackupPolicy / VolumeSnapshot 并写 /status
+      KUBERNETES_API_URL: http://mockkube:8081
+      # 真实集群里改为 https://kubernetes.default.svc + ServiceAccount token
+      # KUBERNETES_TOKEN: ...
     ports:
       - "8080:8080"
+    depends_on:
+      mockkube:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       # slim 镜像没有 curl/wget，用 python 探活
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  mockkube:
+    build: .
+    image: backup-policy-converter:local
+    command: ["uvicorn", "app.mockkube:app", "--host", "0.0.0.0", "--port", "8081"]
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8081/_mock/state')"]
       interval: 10s
       timeout: 3s
       retries: 3

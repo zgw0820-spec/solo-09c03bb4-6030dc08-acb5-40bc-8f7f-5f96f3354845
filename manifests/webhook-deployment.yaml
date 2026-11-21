@@ -11,6 +11,45 @@ kind: Namespace
 metadata:
   name: backup-system
 ---
+# 盘点 API 所需最小权限：读策略、写 status、分页列快照。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-policy-converter
+  namespace: backup-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-policy-converter-audit
+  namespace: backup-system
+rules:
+  - apiGroups: ["backup.example.com"]
+    resources: ["backuppolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["backup.example.com"]
+    resources: ["backuppolicies/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list", "watch"]
+---
+# 盘点可作用于任意命名空间的策略：按需给每个命名空间建同样的 RoleBinding，
+# 或改用 ClusterRole/ClusterRoleBinding（这里给出示例绑定，按实际情况复制）。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-policy-converter-audit
+  namespace: backup-system
+subjects:
+  - kind: ServiceAccount
+    name: backup-policy-converter
+    namespace: backup-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backup-policy-converter-audit
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,9 +67,14 @@ spec:
       labels:
         app: backup-policy-converter
     spec:
+      serviceAccountName: backup-policy-converter
       containers:
         - name: webhook
           image: registry.example.com/backup-policy-converter:1.0.0
+          env:
+            # 盘点 API 直连 API server；token 由 kubelet 挂载并轮换。
+            - name: KUBERNETES_API_URL
+              value: https://kubernetes.default.svc
           args:
             - uvicorn
             - app.main:app

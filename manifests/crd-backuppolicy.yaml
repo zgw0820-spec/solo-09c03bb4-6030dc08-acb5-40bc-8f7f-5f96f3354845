@@ -71,10 +71,51 @@ spec:
                   type: integer
                 message:
                   type: string
+                # 盘点（POST /audit）写入；其余字段由控制器维护，盘点只增删这两项。
+                audit:
+                  type: object
+                  properties:
+                    runID:
+                      type: string
+                    policyUID:
+                      type: string
+                    generation:
+                      type: integer
+                    snapshotResourceVersion:
+                      type: string
+                    completedAt:
+                      type: string
+                      format: date-time
+                    targets:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          retention:
+                            type: integer
+                          available:
+                            type: integer
+                          gap:
+                            type: integer
+                auditError:
+                  type: object
+                  properties:
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    at:
+                      type: string
+                      format: date-time
       additionalPrinterColumns:
         - name: Default
           type: integer
           jsonPath: .spec.defaultRetention
+        - name: Audited
+          type: string
+          jsonPath: .status.audit.completedAt
     # ---- 旧版：只有默认份数 + 目标名列表 ----
     - name: v1alpha1
       served: true
@@ -107,3 +148,9 @@ spec:
                   type: integer
                 message:
                   type: string
+                audit:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                auditError:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
